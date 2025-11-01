@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
+
 
 class User(Base):
     __tablename__ = "users"
@@ -15,6 +17,9 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
+    # Relationship
+    trials = relationship("Trial", back_populates="user", cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', email='{self.email}', is_admin={self.is_admin})>"
 
@@ -28,6 +33,7 @@ class Trial(Base):
     end_time = Column(DateTime(timezone=True), nullable=True)
     status = Column(String, default="pending", nullable=False)
 
+    # Relationship
     user = relationship("User", back_populates="trials")
 
     def __repr__(self):
