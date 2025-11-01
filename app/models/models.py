@@ -16,6 +16,7 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    location = Column(String, nullable=True)
 
     # Relationship
     trials = relationship("Trial", back_populates="user", cascade="all, delete-orphan")
