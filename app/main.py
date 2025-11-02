@@ -1,10 +1,11 @@
 from fastapi import FastAPI
-from routers import health
+from app.routers import health, auth
 
 app = FastAPI(title="Cloud Solar Backend")
 
-# Include the health check router
+# Include routers
 app.include_router(health.router)
+app.include_router(auth.router)
 
 # Optional root route
 @app.get("/")
