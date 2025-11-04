@@ -1,23 +1,31 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from app.db.base import get_db
 from app.models.models import User
-from app.schemas.auth import SignupRequest, LoginRequest, TokenResponse, UserResponse
-from app.core.security import verify_password, create_access_token, get_password_hash
-from datetime import timedelta
+from app.schemas.auth import SignupRequest, LoginRequest, UserResponse
+from app.core.security import get_password_hash
+from app.core.dependencies import get_current_user
+from supertokens_python.recipe.emailpassword.asyncio import sign_up, sign_in
+from supertokens_python.recipe.emailpassword.interfaces import SignUpOkResult, SignInOkResult
+from supertokens_python.recipe.session.asyncio import create_new_session
+from supertokens_python.recipe.session import SessionContainer
+from supertokens_python.recipe.session.framework.fastapi import verify_session
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def signup(
+async def signup(
+    request: Request,
     signup_data: SignupRequest,
     db: Session = Depends(get_db)
 ):
     """
-    User registration endpoint.
+    User registration endpoint with SuperTokens integration.
 
     Args:
+        request: FastAPI request object
+        response: FastAPI response object
         signup_data: User registration data (username, email, password, etc.)
         db: Database session
 
@@ -43,7 +51,16 @@ def signup(
             detail="Email already registered"
         )
 
-    # Create new user
+    # Sign up with SuperTokens
+    supertokens_result = await sign_up("public", signup_data.email, signup_data.password)
+
+    if not isinstance(supertokens_result, SignUpOkResult):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered with SuperTokens"
+        )
+
+    # Create new user in your database
     hashed_password = get_password_hash(signup_data.password)
     new_user = User(
         username=signup_data.username,
@@ -52,30 +69,48 @@ def signup(
         full_name=signup_data.full_name,
         location=signup_data.location,
         is_active=True,
-        is_admin=False
+        is_admin=False,
+        supertokens_user_id=supertokens_result.user.id
     )
 
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
 
+    # Create session for the user
+    await create_new_session(
+        request=request,
+        tenant_id="public",
+        recipe_user_id=supertokens_result.recipe_user_id,
+        access_token_payload={
+            "user_id": new_user.id,
+            "username": new_user.username,
+            "email": new_user.email,
+            "is_admin": new_user.is_admin
+        },
+        session_data_in_database={}
+    )
+
     return new_user
 
 
-@router.post("/login", response_model=TokenResponse)
-def login(
+@router.post("/login")
+async def login(
+    request: Request,
     login_data: LoginRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Login endpoint for user authentication.
+    Login endpoint for user authentication with SuperTokens integration.
 
     Args:
+        request: FastAPI request object
+        response: FastAPI response object
         login_data: Login credentials (username and password)
         db: Database session
 
     Returns:
-        Access token for authenticated user
+        Success message with session cookies set
 
     Raises:
         HTTPException: If credentials are invalid or user is inactive
@@ -90,14 +125,6 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Verify password
-    if not verify_password(login_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
     # Check if user is active
     if not user.is_active:
         raise HTTPException(
@@ -105,28 +132,75 @@ def login(
             detail="Inactive user account",
         )
 
-    # Create access token
-    access_token = create_access_token(
-        data={"sub": user.username, "user_id": user.id, "is_admin": user.is_admin},
-        expires_delta=timedelta(minutes=30)
+    # Sign in with SuperTokens using email
+    supertokens_result = await sign_in("public", user.email, login_data.password)
+
+    if not isinstance(supertokens_result, SignInOkResult):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Update supertokens_user_id if not set
+    if not user.supertokens_user_id:
+        user.supertokens_user_id = supertokens_result.user.id
+        db.commit()
+
+    # Create session for the user
+    await create_new_session(
+        request=request,
+        tenant_id="public",
+        recipe_user_id=supertokens_result.recipe_user_id,
+        access_token_payload={
+            "user_id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "is_admin": user.is_admin
+        },
+        session_data_in_database={}
     )
 
-    return TokenResponse(access_token=access_token, token_type="bearer")
+    return {
+        "status": "OK",
+        "message": "Login successful",
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "is_admin": user.is_admin
+        }
+    }
 
 
 @router.get("/me", response_model=UserResponse)
-def get_current_user(
-    db: Session = Depends(get_db),
-    token: str = Depends(lambda: None)  # Placeholder for authentication dependency
+async def get_me(
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get current authenticated user information.
 
-    Note: This endpoint requires authentication middleware to be implemented.
+    Supports both SuperTokens session authentication and dev API key (X-API-Key).
+
+    Args:
+        current_user: The authenticated user from dependency injection
+
+    Returns:
+        Current user information
     """
-    # This is a placeholder endpoint
-    # You'll need to implement proper token validation and user extraction
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Authentication middleware not yet implemented"
-    )
+    return current_user
+
+
+@router.post("/logout")
+async def logout(session: SessionContainer = Depends(verify_session())):
+    """
+    Logout endpoint to revoke the current session.
+
+    Args:
+        session: SuperTokens session container
+
+    Returns:
+        Success message
+    """
+    await session.revoke_session()
+    return {"status": "OK", "message": "Logout successful"}
