@@ -109,13 +109,13 @@ class CustomerConsumption(Base):
     __tablename__ = "customer_consumption"
 
     consumption_id = Column(Integer, primary_key=True, index=True)
-    customer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    timestamp = Column(DateTime(timezone=True), nullable=False)
+    customer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # Month (use DATE to represent the month; populate as first day of month)
+    month = Column(Date, nullable=False)
+    # Consumption in kWh for the month
     energy_consumed_kwh = Column(Numeric(10, 4), nullable=True)
-    grid_rate_per_kwh = Column(Numeric(6, 4), nullable=True)
+    # Total cost for the consumption in the month
     total_cost = Column(Numeric(10, 2), nullable=True)
-    source = Column(String(20), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class EnergyCredits(Base):
@@ -166,35 +166,6 @@ class Transaction(Base):
     payment_status = Column(String(20), nullable=True)
     reference_id = Column(String(100), nullable=True)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
-
-class Inverter(Base):
-    __tablename__ = "inverters"
-
-    inverter_id = Column(Integer, primary_key=True, index=True)
-    farm_id = Column(Integer, ForeignKey("solar_farms.farm_id"), nullable=True)
-    manufacturer = Column(String(100), nullable=True)
-    model = Column(String(100), nullable=True)
-    serial_number = Column(String(100), unique=True, nullable=True)
-    max_ac_power_kw = Column(Numeric(10, 2), nullable=True)
-    efficiency_percentage = Column(Numeric(5, 2), nullable=True)
-    installation_date = Column(Date, nullable=True)
-    status = Column(String(20), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
-
-class GridFeedIn(Base):
-    __tablename__ = "grid_feed_in"
-
-    feed_in_id = Column(Integer, primary_key=True, index=True)
-    farm_id = Column(Integer, ForeignKey("solar_farms.farm_id"), nullable=True)
-    timestamp = Column(DateTime(timezone=True), nullable=False)
-    total_energy_fed_kwh = Column(Numeric(10, 4), nullable=True)
-    grid_frequency = Column(Numeric(5, 2), nullable=True)
-    voltage = Column(Numeric(6, 2), nullable=True)
-    power_factor = Column(Numeric(4, 3), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
