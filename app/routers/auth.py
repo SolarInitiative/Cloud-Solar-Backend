@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from app.db.base import get_db
 from app.models.models import User
-from app.schemas.auth import SignupRequest, LoginRequest, TokenResponse, UserResponse
-from app.core.security import verify_password, create_access_token, get_password_hash
-from datetime import timedelta
+from app.schemas.auth import SignupRequest, LoginRequest, UserResponse
+from app.core.security import get_password_hash
+from app.core.dependencies import get_current_user
 from supertokens_python.recipe.emailpassword.asyncio import sign_up, sign_in
 from supertokens_python.recipe.emailpassword.interfaces import SignUpOkResult, SignInOkResult
 from supertokens_python.recipe.session.asyncio import create_new_session
@@ -69,7 +69,8 @@ async def signup(
         full_name=signup_data.full_name,
         location=signup_data.location,
         is_active=True,
-        is_admin=False
+        is_admin=False,
+        supertokens_user_id=supertokens_result.user.id
     )
 
     db.add(new_user)
@@ -80,7 +81,7 @@ async def signup(
     await create_new_session(
         request=request,
         tenant_id="public",
-        user_id=supertokens_result.user.id,
+        recipe_user_id=supertokens_result.recipe_user_id,
         access_token_payload={
             "user_id": new_user.id,
             "username": new_user.username,
@@ -141,11 +142,16 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Update supertokens_user_id if not set
+    if not user.supertokens_user_id:
+        user.supertokens_user_id = supertokens_result.user.id
+        db.commit()
+
     # Create session for the user
     await create_new_session(
         request=request,
         tenant_id="public",
-        user_id=supertokens_result.user.id,
+        recipe_user_id=supertokens_result.recipe_user_id,
         access_token_payload={
             "user_id": user.id,
             "username": user.username,
@@ -168,42 +174,21 @@ async def login(
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user(
-    session: SessionContainer = Depends(verify_session()),
-    db: Session = Depends(get_db)
+async def get_me(
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Get current authenticated user information using SuperTokens session.
+    Get current authenticated user information.
+
+    Supports both SuperTokens session authentication and dev API key (X-API-Key).
 
     Args:
-        session: SuperTokens session container with user session data
-        db: Database session
+        current_user: The authenticated user from dependency injection
 
     Returns:
         Current user information
-
-    Raises:
-        HTTPException: If user not found
     """
-    # Get user ID from session payload
-    user_id = session.get_access_token_payload().get("user_id")
-
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found in session"
-        )
-
-    # Fetch user from database
-    user = db.query(User).filter(User.id == user_id).first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-
-    return user
+    return current_user
 
 
 @router.post("/logout")

@@ -16,7 +16,7 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     location = Column(String, nullable=True)
-    location_of_asset = Column(String, nullable=True)
+    supertokens_user_id = Column(String, unique=True, index=True, nullable=True)
 
     def __repr__(self):
         return f"<User(id={self.id}, username='{self.username}', email='{self.email}', is_admin={self.is_admin})>"

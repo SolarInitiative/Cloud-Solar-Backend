@@ -10,23 +10,6 @@ router = APIRouter(
     tags=["User"]
 )
 
-
-@router.get("/me", response_model=UserResponse, summary="Get current logged-in user")
-async def get_logged_in_user(
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Retrieve details of the currently logged-in user using SuperTokens session.
-
-    This endpoint uses SuperTokens session verification to identify the user.
-    The session is automatically validated via cookies or Authorization header.
-
-    Returns:
-        UserResponse: Current user information including id, username, email, etc.
-    """
-    return current_user
-
-
 @router.get("/profile", response_model=UserResponse, summary="Get user profile")
 async def get_user_profile(
     current_user: User = Depends(get_current_user)
