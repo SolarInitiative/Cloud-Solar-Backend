@@ -24,7 +24,6 @@ class User(Base):
     account_status = Column(String(20), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    supertokens_user_id = Column(String, unique=True, index=True, nullable=True)
 
     # Relationships
     panel_ownerships = relationship("PanelOwnership", back_populates="customer")
