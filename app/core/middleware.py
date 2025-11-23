@@ -12,7 +12,7 @@ class DevAPIKeyMiddleware(BaseHTTPMiddleware):
     Middleware to handle development API key authentication.
 
     When a request includes the header "X-API-Key: dev_api_key_123",
-    it bypasses SuperTokens authentication and assigns a default dev user.
+    it bypasses JWT authentication and assigns a default dev user.
 
     This is useful for:
     - Development and testing
