@@ -1,27 +1,31 @@
 """
-Authentication dependencies for protected routes using SuperTokens.
+Authentication dependencies for protected routes.
+This module has been updated to remove SuperTokens and use JWT-based authentication.
 """
 
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, status, Request, Header
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from supertokens_python.recipe.session import SessionContainer
-from supertokens_python.recipe.session.framework.fastapi import verify_session
+from typing import Optional
 from app.db.base import get_db
 from app.models.models import User
+from app.core.security import verify_token
+
+security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
     request: Request,
-    session: SessionContainer = Depends(verify_session(session_required=False)),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
     """
     Dependency to get the current authenticated user.
-    Supports both SuperTokens session and Dev API Key.
+    Supports both JWT Bearer token and Dev API Key.
 
     Args:
         request: The FastAPI request object
-        session: SuperTokens session container (optional)
+        credentials: HTTP Bearer token from Authorization header (optional)
         db: Database session
 
     Returns:
@@ -36,22 +40,23 @@ async def get_current_user(
     if hasattr(request.state, "is_dev_mode") and request.state.is_dev_mode:
         user_id = request.state.dev_user_id
     
-    # 2. Check for SuperTokens Session
-    elif session:
-        user_id = session.get_access_token_payload().get("user_id")
+    # 2. Check for JWT Bearer Token
+    elif credentials:
+        payload = verify_token(credentials.credentials)
+        if payload:
+            user_id = payload.get("sub")
 
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required"
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"}
         )
 
     # Fetch user from database
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
-        # If it's a supertokens user but not in our DB yet, we might handle that differently
-        # But for now, we expect the user to exist
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
@@ -90,9 +95,42 @@ async def get_current_admin_user(
     return current_user
 
 
-def get_optional_session():
+async def get_current_user_optional(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db)
+) -> Optional[User]:
     """
     Dependency for optional authentication.
-    Returns session if valid, None otherwise.
+    Returns user if authenticated, None otherwise.
+
+    Args:
+        request: The FastAPI request object
+        credentials: HTTP Bearer token from Authorization header (optional)
+        db: Database session
+
+    Returns:
+        User or None
     """
-    return verify_session(session_required=False)
+    user_id = None
+
+    # 1. Check for Dev API Key (via middleware state)
+    if hasattr(request.state, "is_dev_mode") and request.state.is_dev_mode:
+        user_id = request.state.dev_user_id
+    
+    # 2. Check for JWT Bearer Token
+    elif credentials:
+        payload = verify_token(credentials.credentials)
+        if payload:
+            user_id = payload.get("sub")
+
+    if not user_id:
+        return None
+
+    # Fetch user from database
+    user = db.query(User).filter(User.id == user_id).first()
+    
+    if user and user.is_active:
+        return user
+    
+    return None
