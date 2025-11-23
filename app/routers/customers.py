@@ -38,7 +38,7 @@ async def read_panel_ownerships(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    ownerships = db.query(PanelOwnership).offset(pagination.skip).limit(pagination.limit).all()
+    ownerships = db.query(PanelOwnership).filter(PanelOwnership.customer_id == current_user.id).offset(pagination.skip).limit(pagination.limit).all()
     return ownerships
 
 @router.get("/ownership/{ownership_id}", response_model=PanelOwnershipResponse)
@@ -105,7 +105,7 @@ async def read_customer_consumptions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    consumptions = db.query(CustomerConsumption).offset(pagination.skip).limit(pagination.limit).all()
+    consumptions = db.query(CustomerConsumption).filter(CustomerConsumption.customer_id == current_user.id).offset(pagination.skip).limit(pagination.limit).all()
     return consumptions
 
 @router.get("/consumption/{consumption_id}", response_model=CustomerConsumptionResponse)
@@ -172,7 +172,7 @@ async def read_energy_credits(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    credits = db.query(EnergyCredits).offset(pagination.skip).limit(pagination.limit).all()
+    credits = db.query(EnergyCredits).filter(EnergyCredits.customer_id == current_user.id).offset(pagination.skip).limit(pagination.limit).all()
     return credits
 
 @router.get("/credits/{credit_id}", response_model=EnergyCreditsResponse)
@@ -239,7 +239,7 @@ async def read_transactions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    transactions = db.query(Transaction).offset(pagination.skip).limit(pagination.limit).all()
+    transactions = db.query(Transaction).filter(Transaction.customer_id == current_user.id).offset(pagination.skip).limit(pagination.limit).all()
     return transactions
 
 @router.get("/transactions/{transaction_id}", response_model=TransactionResponse)
@@ -306,7 +306,7 @@ async def read_notifications(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    notifications = db.query(Notification).offset(pagination.skip).limit(pagination.limit).all()
+    notifications = db.query(Notification).filter(Notification.customer_id == current_user.id).offset(pagination.skip).limit(pagination.limit).all()
     return notifications
 
 @router.get("/notifications/{notification_id}", response_model=NotificationResponse)

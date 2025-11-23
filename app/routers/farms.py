@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.base import get_db
@@ -99,11 +99,15 @@ async def create_solar_panel(
 
 @router.get("/panels/", response_model=List[SolarPanelResponse])
 async def read_solar_panels(
+    farm_id: Optional[int] = None,
     pagination: PaginationParams = Depends(),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    panels = db.query(SolarPanel).offset(pagination.skip).limit(pagination.limit).all()
+    query = db.query(SolarPanel)
+    if farm_id:
+        query = query.filter(SolarPanel.farm_id == farm_id)
+    panels = query.offset(pagination.skip).limit(pagination.limit).all()
     return panels
 
 @router.get("/panels/{panel_id}", response_model=SolarPanelResponse)

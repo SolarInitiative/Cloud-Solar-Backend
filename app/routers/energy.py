@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.base import get_db
 from app.core.auth_dependencies import get_current_user
-from app.models.models import EnergyGeneration, User
+from app.models.models import EnergyGeneration, User, PanelOwnership, SolarPanel
 from app.schemas.schemas import (
     EnergyGenerationCreate, EnergyGenerationUpdate, EnergyGenerationResponse,
     PaginationParams
@@ -34,7 +34,7 @@ async def read_energy_generations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    generations = db.query(EnergyGeneration).offset(pagination.skip).limit(pagination.limit).all()
+    generations = db.query(EnergyGeneration).join(EnergyGeneration.panel).join(SolarPanel.ownerships).filter(PanelOwnership.customer_id == current_user.id).offset(pagination.skip).limit(pagination.limit).all()
     return generations
 
 @router.get("/generation/{generation_id}", response_model=EnergyGenerationResponse)

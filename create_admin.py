@@ -3,16 +3,13 @@ Script to create an admin user in the database.
 This user can be used for testing and will work with the dev API key middleware.
 """
 
-import asyncio
 from app.db.base import SessionLocal
 from app.models.models import User
 from app.core.security import get_password_hash
-from supertokens_python.recipe.emailpassword.asyncio import sign_up
-from supertokens_python.recipe.emailpassword.interfaces import SignUpOkResult
 
 
-async def create_admin_user():
-    """Create an admin user with SuperTokens integration."""
+def create_admin_user():
+    """Create an admin user in the local database."""
     db = SessionLocal()
 
     # Admin credentials
@@ -42,19 +39,8 @@ async def create_admin_user():
                 print(f"\n[OK] Updated user to admin status")
             return
 
-        # Register with SuperTokens first
-        print("\n1. Registering with SuperTokens...")
-        supertokens_result = await sign_up("public", email, password)
-
-        if not isinstance(supertokens_result, SignUpOkResult):
-            print("[X] Failed to register with SuperTokens")
-            print("   The email might already be registered")
-            return
-
-        print(f"   [OK] SuperTokens user created: {supertokens_result.user.id}")
-
         # Create user in local database
-        print("\n2. Creating user in local database...")
+        print("\nCreating user in local database...")
         hashed_password = get_password_hash(password)
         new_user = User(
             username=username,
@@ -63,8 +49,7 @@ async def create_admin_user():
             full_name=full_name,
             location=location,
             is_active=True,
-            is_admin=True,  # Make this user an admin
-            supertokens_user_id=supertokens_result.user.id
+            is_admin=True  # Make this user an admin
         )
 
         db.add(new_user)
@@ -84,7 +69,6 @@ async def create_admin_user():
         print(f"   ID:       {new_user.id}")
         print(f"   Is Admin: {new_user.is_admin}")
         print(f"   Is Active: {new_user.is_active}")
-        print(f"   SuperTokens ID: {new_user.supertokens_user_id}")
         print("\n" + "=" * 60)
         print("\n💡 You can now use these credentials to:")
         print("   1. Login via: POST /auth/login")
@@ -101,4 +85,4 @@ async def create_admin_user():
 
 
 if __name__ == "__main__":
-    asyncio.run(create_admin_user())
+    create_admin_user()
