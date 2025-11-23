@@ -7,4 +7,3 @@ uvicorn>=0.30
 passlib[bcrypt]>=1.7
 python-jose[cryptography]>=3.3.0
 pydantic>=2.0
-supertokens-python>=0.29.0
