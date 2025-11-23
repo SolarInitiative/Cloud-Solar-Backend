@@ -1,37 +1,29 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.base import get_db
 from app.models.models import User
 from app.schemas.auth import SignupRequest, LoginRequest, UserResponse
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash, verify_password, create_access_token
 from app.core.dependencies import get_current_user
-from supertokens_python.recipe.emailpassword.asyncio import sign_up, sign_in
-from supertokens_python.recipe.emailpassword.interfaces import SignUpOkResult, SignInOkResult
-from supertokens_python.recipe.session.asyncio import create_new_session
-from supertokens_python.recipe.session import SessionContainer
-from supertokens_python.recipe.session.framework.fastapi import verify_session
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def signup(
-    request: Request,
     signup_data: SignupRequest,
     db: Session = Depends(get_db)
 ):
     """
-    User registration endpoint with SuperTokens integration.
-
+    User registration endpoint.
+    
     Args:
-        request: FastAPI request object
-        response: FastAPI response object
         signup_data: User registration data (username, email, password, etc.)
         db: Database session
-
+        
     Returns:
         Created user information
-
+        
     Raises:
         HTTPException: If username or email already exists
     """
@@ -42,7 +34,7 @@ async def signup(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already registered"
         )
-
+    
     # Check if email already exists
     existing_email = db.query(User).filter(User.email == signup_data.email).first()
     if existing_email:
@@ -50,17 +42,8 @@ async def signup(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
-
-    # Sign up with SuperTokens
-    supertokens_result = await sign_up("public", signup_data.email, signup_data.password)
-
-    if not isinstance(supertokens_result, SignUpOkResult):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered with SuperTokens"
-        )
-
-    # Create new user in your database
+    
+    # Create new user
     hashed_password = get_password_hash(signup_data.password)
     new_user = User(
         username=signup_data.username,
@@ -69,105 +52,64 @@ async def signup(
         full_name=signup_data.full_name,
         location=signup_data.location,
         is_active=True,
-        is_admin=False,
-        supertokens_user_id=supertokens_result.user.id
+        is_admin=False
     )
-
+    
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-
-    # Create session for the user
-    await create_new_session(
-        request=request,
-        tenant_id="public",
-        recipe_user_id=supertokens_result.recipe_user_id,
-        access_token_payload={
-            "user_id": new_user.id,
-            "username": new_user.username,
-            "email": new_user.email,
-            "is_admin": new_user.is_admin
-        },
-        session_data_in_database={}
-    )
-
+    
     return new_user
 
 
 @router.post("/login")
 async def login(
-    request: Request,
     login_data: LoginRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Login endpoint for user authentication with SuperTokens integration.
-
+    Login endpoint for user authentication.
+    
     Args:
-        request: FastAPI request object
-        response: FastAPI response object
         login_data: Login credentials (username and password)
         db: Database session
-
+        
     Returns:
-        Success message with session cookies set
-
+        Access token and user information
+        
     Raises:
         HTTPException: If credentials are invalid or user is inactive
     """
     # Find user by username
     user = db.query(User).filter(User.username == login_data.username).first()
-
-    if not user:
+    
+    if not user or not verify_password(login_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
+    
     # Check if user is active
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user account",
         )
-
-    # Sign in with SuperTokens using email
-    supertokens_result = await sign_in("public", user.email, login_data.password)
-
-    if not isinstance(supertokens_result, SignInOkResult):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Update supertokens_user_id if not set
-    if not user.supertokens_user_id:
-        user.supertokens_user_id = supertokens_result.user.id
-        db.commit()
-
-    # Create session for the user
-    await create_new_session(
-        request=request,
-        tenant_id="public",
-        recipe_user_id=supertokens_result.recipe_user_id,
-        access_token_payload={
-            "user_id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "is_admin": user.is_admin
-        },
-        session_data_in_database={}
+    
+    # Create access token
+    access_token = create_access_token(
+        data={"sub": user.id, "username": user.username, "email": user.email}
     )
-
+    
     return {
-        "status": "OK",
-        "message": "Login successful",
+        "access_token": access_token,
+        "token_type": "bearer",
         "user": {
             "id": user.id,
             "username": user.username,
             "email": user.email,
+            "full_name": user.full_name,
             "is_admin": user.is_admin
         }
     }
@@ -179,12 +121,10 @@ async def get_me(
 ):
     """
     Get current authenticated user information.
-
-    Supports both SuperTokens session authentication and dev API key (X-API-Key).
-
+    
     Args:
         current_user: The authenticated user from dependency injection
-
+        
     Returns:
         Current user information
     """
@@ -192,15 +132,13 @@ async def get_me(
 
 
 @router.post("/logout")
-async def logout(session: SessionContainer = Depends(verify_session())):
+async def logout():
     """
-    Logout endpoint to revoke the current session.
-
-    Args:
-        session: SuperTokens session container
-
+    Logout endpoint.
+    Note: With JWT, logout is handled client-side by removing the token.
+    This endpoint exists for API consistency.
+    
     Returns:
         Success message
     """
-    await session.revoke_session()
     return {"status": "OK", "message": "Logout successful"}
