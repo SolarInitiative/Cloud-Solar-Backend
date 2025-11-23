@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import health, auth, user
+from app.routers import health, auth, user, farms, customers, energy
 from app.core.supertokens_config import init_supertokens, get_all_cors_headers
 from app.core.middleware import DevAPIKeyMiddleware
 from supertokens_python.framework.fastapi import get_middleware
@@ -30,3 +30,6 @@ app.add_middleware(DevAPIKeyMiddleware, dev_user_id=1)
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(user.router)
+app.include_router(farms.router)
+app.include_router(customers.router)
+app.include_router(energy.router)

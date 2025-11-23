@@ -2,7 +2,7 @@
 Authentication dependencies for protected routes using SuperTokens.
 """
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from supertokens_python.recipe.session import SessionContainer
 from supertokens_python.recipe.session.framework.fastapi import verify_session
@@ -11,35 +11,47 @@ from app.models.models import User
 
 
 async def get_current_user(
-    session: SessionContainer = Depends(verify_session()),
+    request: Request,
+    session: SessionContainer = Depends(verify_session(session_required=False)),
     db: Session = Depends(get_db)
 ) -> User:
     """
-    Dependency to get the current authenticated user from SuperTokens session.
+    Dependency to get the current authenticated user.
+    Supports both SuperTokens session and Dev API Key.
 
     Args:
-        session: SuperTokens session container
+        request: The FastAPI request object
+        session: SuperTokens session container (optional)
         db: Database session
 
     Returns:
         User: Current authenticated user
 
     Raises:
-        HTTPException: If user not found in session or database
+        HTTPException: If user not found or not authenticated
     """
-    # Get user ID from session payload
-    user_id = session.get_access_token_payload().get("user_id")
+    user_id = None
+
+    # 1. Check for Dev API Key (via middleware state)
+    if hasattr(request.state, "is_dev_mode") and request.state.is_dev_mode:
+        user_id = request.state.dev_user_id
+    
+    # 2. Check for SuperTokens Session
+    elif session:
+        user_id = session.get_access_token_payload().get("user_id")
 
     if not user_id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found in session"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
         )
 
     # Fetch user from database
     user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
+        # If it's a supertokens user but not in our DB yet, we might handle that differently
+        # But for now, we expect the user to exist
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
