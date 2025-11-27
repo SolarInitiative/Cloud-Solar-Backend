@@ -44,6 +44,8 @@ async def signup(
         )
     
     # Create new user
+    print(f"DEBUG: Password received: '{signup_data.password}'")
+    print(f"DEBUG: Password length: {len(signup_data.password)} bytes")
     hashed_password = get_password_hash(signup_data.password)
     new_user = User(
         username=signup_data.username,
